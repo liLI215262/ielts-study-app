@@ -174,7 +174,7 @@ function Home() {
         <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
             {/* 顶部标题栏 */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
-                <h1>📚 雅思备考助手</h1>
+            <h1>📚 雅思备考助手 (v1.0)</h1>
                 <button onClick={handleLogout} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 15px', cursor: 'pointer', borderRadius: '4px' }}>
                     退出登录
                 </button>

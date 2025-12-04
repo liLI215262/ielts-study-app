@@ -1,0 +1,107 @@
+// 文件路径: src/App.jsx
+import { useState, useEffect } from 'react'
+import { supabase } from './supabaseClient'
+import './App.css'
+
+function App() {
+  const [word, setWord] = useState('')
+  const [definition, setDefinition] = useState(null)
+  const [savedWords, setSavedWords] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  // 页面加载时，获取云端已保存的单词
+  useEffect(() => {
+    fetchSavedWords()
+  }, [])
+
+  async function fetchSavedWords() {
+    const { data, error } = await supabase
+      .from('vocabulary')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) console.log('获取失败:', error)
+    else setSavedWords(data || [])
+  }
+
+  // 查词功能
+  async function searchWord() {
+    if (!word) return
+    setLoading(true)
+    try {
+      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`)
+      const data = await res.json()
+      if (data && data[0]) {
+        setDefinition(data[0])
+      } else {
+        alert("未找到该单词")
+        setDefinition(null)
+      }
+    } catch (err) {
+      console.error(err)
+      alert("网络错误")
+    }
+    setLoading(false)
+  }
+
+  // 保存到云端
+  async function saveToCloud() {
+    if (!definition) return
+    const meaning = definition.meanings[0].definitions[0].definition
+    
+    const { error } = await supabase
+      .from('vocabulary')
+      .insert([{ word: word, meaning: meaning }])
+
+    if (error) {
+      alert("保存失败: " + error.message)
+    } else {
+      alert("✅ 已保存！")
+      fetchSavedWords() // 刷新列表
+      setWord('') // 清空输入框
+      setDefinition(null) // 清空结果
+    }
+  }
+
+  return (
+    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'Arial' }}>
+      <h1>📘 雅思备考助手</h1>
+      
+      {/* 搜索框 */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <input 
+          value={word}
+          onChange={e => setWord(e.target.value)}
+          placeholder="输入单词 (如: achieve)"
+          style={{ flex: 1, padding: '10px', fontSize: '16px' }}
+        />
+        <button onClick={searchWord} disabled={loading} style={{ padding: '10px 20px' }}>
+          {loading ? '...' : '查询'}
+        </button>
+      </div>
+
+      {/* 查词结果 */}
+      {definition && (
+        <div style={{ background: '#f0f8ff', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+          <h2>{definition.word}</h2>
+          <p>音标: {definition.phonetic}</p>
+          <p>释义: {definition.meanings[0].definitions[0].definition}</p>
+          <button onClick={saveToCloud} style={{ background: '#4CAF50', color: 'white', border: 'none', padding: '10px', cursor: 'pointer' }}>
+            💾 保存到生词本
+          </button>
+        </div>
+      )}
+
+      {/* 生词本列表 */}
+      <h3>📚 我的生词本 ({savedWords.length})</h3>
+      <ul style={{ listStyle: 'none', padding: 0 }}>
+        {savedWords.map(item => (
+          <li key={item.id} style={{ borderBottom: '1px solid #eee', padding: '10px 0' }}>
+            <strong>{item.word}</strong>: {item.meaning}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+export default App

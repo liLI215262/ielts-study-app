@@ -19,21 +19,7 @@ function SpeakingPractice() {
     const [showAssessment, setShowAssessment] = useState(false); 
     const [selfScore, setSelfScore] = useState(60); 
     
-    // 页面加载时，获取麦克风权限
-    useEffect(() => {
-        getMicrophoneAccess();
-    }, []);
-
-    // 获取麦克风权限的逻辑
-    const getMicrophoneAccess = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            console.log("Microphone access granted.");
-        } catch (err) {
-            alert("⚠️ 无法获取麦克风权限。请检查浏览器设置。");
-            console.error("Microphone error:", err);
-        }
-    };
+    
 
     // 随机选择一个话题
     const selectRandomTopic = () => {
@@ -42,14 +28,19 @@ function SpeakingPractice() {
         setAudioBlob(null); 
     };
     
-    // 开始录音
-    const startRecording = async () => {
-        if (!topic) {
-            alert("请先选择一个话题卡片！");
-            return;
-        }
+   // 文件路径: src/SpeakingPractice.jsx (替换 startRecording 函数)
 
+// 开始录音
+const startRecording = async () => {
+    if (!topic) {
+        alert("请先选择一个话题卡片！");
+        return;
+    }
+
+    try {
+        // 🔥 关键修改：在这里请求权限，只有点击按钮时才会执行
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = []; 
 
@@ -61,6 +52,7 @@ function SpeakingPractice() {
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             setAudioBlob(audioBlob);
             stream.getTracks().forEach(track => track.stop()); 
+            setShowAssessment(true); // 停止后显示评分弹窗
         };
 
         mediaRecorder.start();
@@ -74,8 +66,12 @@ function SpeakingPractice() {
                 stopRecording();
             }
         }, timerDuration);
-    };
 
+    } catch (err) {
+        alert("⚠️ 无法开始录音：请确保授予了麦克风权限！");
+        console.error("Microphone error:", err);
+    }
+};
     // 停止录音
     const stopRecording = () => {
         if (mediaRecorder && mediaRecorder.state === 'recording') {

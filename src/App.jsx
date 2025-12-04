@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import Auth from './Auth' // 导入 Auth 组件
-import SpeakingPractice from './SpeakingPractice'; // 导入口语组件
-import WritingPractice from './WritingPractice'; // 导入写作组件
-import Dashboard from './Dashboard'; // 导入 Dashboard 组件
-import CourseMaterials from './CourseMaterials'; // 导入课程资料组件
-import ReadingPractice from './ReadingPractice'; // <-- 新增导入
+import Auth from './Auth' 
+import SpeakingPractice from './SpeakingPractice'; 
+import WritingPractice from './WritingPractice'; 
+import Dashboard from './Dashboard'; 
+import CourseMaterials from './CourseMaterials'; 
+import ReadingPractice from './ReadingPractice'; 
+
 // -------------------------------------------------------------------
 // 词汇本主页组件 (Home - 已登录用户视图)
 // -------------------------------------------------------------------
@@ -15,42 +16,50 @@ function Home() {
     // 【状态定义】
     const [currentView, setCurrentView] = useState('dashboard'); 
     
+    // 仪表盘统计数据
     const [stats, setStats] = useState({
         vocab_count: 0,
         writing_count: 0,
+        reading_accuracy: 0,   
+        latest_speaking: '-',  
         exam_countdown: '计算中...' 
     });
 
+    // 词汇本相关状态
     const [word, setWord] = useState('')
     const [definition, setDefinition] = useState(null)
     const [savedWords, setSavedWords] = useState([])
     const [loading, setLoading] = useState(false)
     
-    // 1. 页面加载时，调用统计和单词函数
+    // 1. 页面加载时，获取所有数据 (🔥 PWA 延迟修复)
     useEffect(() => {
-        fetchStats(); 
-        fetchSavedWords(); 
+        // 关键修复：添加 500 毫秒延迟，让 PWA 壳层稳定后再开始网络请求
+        setTimeout(() => {
+            fetchStats(); 
+            fetchSavedWords(); 
+        }, 500); 
     }, []);
 
     // ------------------------------------
-    // 【已修复】获取进度统计数据函数 (fetchStats)
+    // 获取进度统计数据 (fetchStats)
     // ------------------------------------
-    // 文件路径: src/App.jsx (替换 fetchStats 函数)
-
     const fetchStats = async () => {
         const user = (await supabase.auth.getSession()).data.session?.user;
         if (!user) return;
 
-        // 1. 基础统计
+        // 1. 获取单词总数
         const { count: vocab_count } = await supabase
             .from('vocabulary')
-            .select('*', { count: 'exact', head: true }).eq('user_id', user.id); 
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id); 
 
+        // 2. 获取作文总数
         const { count: writing_count } = await supabase
             .from('writing_exercises')
-            .select('*', { count: 'exact', head: true }).eq('user_id', user.id); 
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id); 
 
-        // 2. 🔥【新增】计算阅读平均正确率
+        // 3. 计算阅读平均正确率
         const { data: readingData } = await supabase
             .from('reading_exercises')
             .select('accuracy_percent')
@@ -62,7 +71,7 @@ function Home() {
             avgAccuracy = Math.round(total / readingData.length);
         }
 
-        // 3. 🔥【新增】获取最新口语得分
+        // 4. 获取最新口语得分
         const { data: speakingData } = await supabase
             .from('speaking_assessments')
             .select('self_band_score')
@@ -72,30 +81,29 @@ function Home() {
         
         const lastScore = speakingData && speakingData.length > 0 ? (speakingData[0].self_band_score / 10).toFixed(1) : '-';
 
-        // 4. 倒计时
+        // 5. 倒计时
         const targetDate = new Date('2028-12-03'); 
         const today = new Date();
         const diffTime = targetDate.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
-        // 5. 更新状态
+        // 更新状态
         setStats({
             vocab_count: vocab_count || 0,
             writing_count: writing_count || 0,
-            exam_countdown: diffDays > 0 ? `${diffDays} 天` : '目标已达成！',
-            reading_accuracy: avgAccuracy, // 新增
-            latest_speaking: lastScore     // 新增
+            reading_accuracy: avgAccuracy,
+            latest_speaking: lastScore,
+            exam_countdown: diffDays > 0 ? `${diffDays} 天` : '目标已达成！'
         });
     };
-    // 获取单词列表函数 (fetchSavedWords - 安全版本)
+
+    // 获取单词列表函数
     const fetchSavedWords = async () => {
         const user = (await supabase.auth.getSession()).data.session?.user
-        
         if (!user) {
             setSavedWords([]) 
             return
         }
-
         const { data, error } = await supabase
             .from('vocabulary')
             .select('*')
@@ -106,17 +114,15 @@ function Home() {
         else setSavedWords(data || [])
     }
     
-    // 保存单词函数 (saveToCloud - 安全版本)
+    // 保存单词函数
     const saveToCloud = async () => {
         if (!definition) return
         const meaningText = definition.meanings[0].definitions[0].definition
-        
         const user = (await supabase.auth.getSession()).data.session?.user
         if (!user) {
             alert("请先登录！") 
             return
         }
-
         const { error } = await supabase
             .from('vocabulary')
             .insert([{ 
@@ -130,12 +136,13 @@ function Home() {
         } else {
             alert("已保存到云端！")
             fetchSavedWords() 
+            fetchStats() 
             setWord('')
             setDefinition(null)
         }
     }
     
-    // 查词函数 (searchWord)
+    // 查词函数
     const searchWord = async () => {
         if (!word) return
         setLoading(true)
@@ -154,97 +161,91 @@ function Home() {
         setLoading(false)
     }
 
-    // 登出函数 (handleLogout)
+    // 登出函数
     const handleLogout = async () => {
         const { error } = await supabase.auth.signOut()
         if (error) alert(error.message)
     }
 
     // ------------------------------------
-    // Home 组件的返回 (return) 部分
+    // 页面渲染 (UI)
     // ------------------------------------
     return ( 
         <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+            {/* 顶部标题栏 */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
                 <h1>📚 雅思备考助手</h1>
-                <button onClick={handleLogout} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 15px', cursor: 'pointer' }}>
+                <button onClick={handleLogout} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 15px', cursor: 'pointer', borderRadius: '4px' }}>
                     退出登录
                 </button>
             </div>
             
-            // 文件路径: src/App.jsx (Home 组件的 return 区域 - 导航栏)
+            {/* 导航栏：切换模块 */}
+            <div style={{ marginBottom: '20px', borderBottom: '1px solid #ddd', paddingBottom: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                <button 
+                    onClick={() => setCurrentView('dashboard')}
+                    style={{ padding: '10px 15px', background: currentView === 'dashboard' ? '#c0392b' : '#f0f0f0', color: currentView === 'dashboard' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer', borderRadius: '4px' }}
+                >
+                    🚀 仪表盘
+                </button>
+                <button 
+                    onClick={() => setCurrentView('vocabulary')}
+                    style={{ padding: '10px 15px', background: currentView === 'vocabulary' ? '#3498db' : '#f0f0f0', color: currentView === 'vocabulary' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer', borderRadius: '4px' }}
+                >
+                    词汇本
+                </button>
+                <button 
+                    onClick={() => setCurrentView('reading')}
+                    style={{ padding: '10px 15px', background: currentView === 'reading' ? '#3498db' : '#f0f0f0', color: currentView === 'reading' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer', borderRadius: '4px' }}
+                >
+                    📰 阅读计时
+                </button>
+                <button 
+                    onClick={() => setCurrentView('speaking')}
+                    style={{ padding: '10px 15px', background: currentView === 'speaking' ? '#3498db' : '#f0f0f0', color: currentView === 'speaking' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer', borderRadius: '4px' }}
+                >
+                    口语模拟
+                </button>
+                <button 
+                    onClick={() => setCurrentView('writing')}
+                    style={{ padding: '10px 15px', background: currentView === 'writing' ? '#3498db' : '#f0f0f0', color: currentView === 'writing' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer', borderRadius: '4px' }}
+                >
+                    写作练习
+                </button>
+                <button 
+                    onClick={() => setCurrentView('materials')}
+                    style={{ padding: '10px 15px', background: currentView === 'materials' ? '#3498db' : '#f0f0f0', color: currentView === 'materials' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer', borderRadius: '4px' }}
+                >
+                    📚 资料
+                </button>
+            </div>
 
-{/* 导航栏：切换模块 */}
-<div style={{ marginBottom: '20px', borderBottom: '1px solid #ddd', paddingBottom: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-    <button 
-        onClick={() => setCurrentView('dashboard')}
-        style={{ padding: '10px 15px', background: currentView === 'dashboard' ? '#c0392b' : '#f0f0f0', color: currentView === 'dashboard' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer' }}
-    >
-        🚀 仪表盘 (进度)
-    </button>
-    <button 
-        onClick={() => setCurrentView('vocabulary')}
-        style={{ padding: '10px 15px', background: currentView === 'vocabulary' ? '#3498db' : '#f0f0f0', color: currentView === 'vocabulary' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer' }}
-    >
-        词汇本 (查词)
-    </button>
-    
-    {/* 🔥 修正点：这里必须是 'reading' */}
-    <button 
-        onClick={() => setCurrentView('reading')} 
-        style={{ padding: '10px 15px', background: currentView === 'reading' ? '#3498db' : '#f0f0f0', color: currentView === 'reading' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer' }}
-    >
-        📰 阅读计时
-    </button>
-    
-    {/* 口语按钮保持 'speaking' */}
-    <button 
-        onClick={() => setCurrentView('speaking')}
-        style={{ padding: '10px 15px', background: currentView === 'speaking' ? '#3498db' : '#f0f0f0', color: currentView === 'speaking' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer' }}
-    >
-        口语模拟
-    </button>
-    
-    <button 
-        onClick={() => setCurrentView('writing')}
-        style={{ padding: '10px 15px', background: currentView === 'writing' ? '#3498db' : '#f0f0f0', color: currentView === 'writing' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer' }}
-    >
-        写作练习 (Task 2)
-    </button>
-    <button 
-        onClick={() => setCurrentView('materials')}
-        style={{ padding: '10px 15px', background: currentView === 'materials' ? '#3498db' : '#f0f0f0', color: currentView === 'materials' ? 'white' : 'black', border: '1px solid #ccc', cursor: 'pointer' }}
-    >
-        📚 课程与资料
-    </button>
-</div>
-            {/* 内容区：根据状态显示组件 */}
+            {/* --- 内容显示区域 --- */}
+
+            {/* 1. 仪表盘 */}
             {currentView === 'dashboard' && <Dashboard stats={stats} />} 
 
+            {/* 2. 词汇本 */}
             {currentView === 'vocabulary' && (
                 <div>
-                    {/* 搜索区域 */}
                     <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-                        <input type="text" value={word} onChange={(e) => setWord(e.target.value)} placeholder="输入雅思生词 (例如: achieve)" style={{ flex: 1, padding: '10px' }}/>
-                        <button onClick={searchWord} disabled={loading}>{loading ? '查询中...' : '查询'}</button>
+                        <input type="text" value={word} onChange={(e) => setWord(e.target.value)} placeholder="输入雅思生词 (例如: achieve)" style={{ flex: 1, padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}/>
+                        <button onClick={searchWord} disabled={loading} style={{ padding: '10px 20px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px' }}>{loading ? '查询中...' : '查询'}</button>
                     </div>
 
-                    {/* 结果展示 */}
                     {definition && (
                         <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', marginBottom: '20px', background: '#f9f9f9' }}>
                             <h2>{definition.word}</h2>
                             <p><i>{definition.phonetic}</i></p>
                             <p><strong>释义：</strong> {definition.meanings[0].definitions[0].definition}</p>
                             {definition.phonetics[0]?.audio && (<audio controls src={definition.phonetics[0].audio} style={{ marginTop: '10px' }}></audio>)}
-                            <button onClick={saveToCloud} style={{ display: 'block', marginTop: '15px', background: '#4CAF50', color: 'white' }}>☁️ 保存到云端词库</button>
+                            <button onClick={saveToCloud} style={{ display: 'block', marginTop: '15px', background: '#4CAF50', color: 'white', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer' }}>☁️ 保存到云端词库</button>
                         </div>
                     )}
 
                     <hr />
-
-                    {/* 单词列表 */}
                     <h3>📚 我的积累 ({savedWords.length})</h3>
-                    <ul>
+                    <ul style={{ paddingLeft: '20px' }}>
                         {savedWords.map((item) => (
                             <li key={item.id} style={{ marginBottom: '10px', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>
                                 <strong>{item.word}</strong>: {item.meaning}
@@ -253,18 +254,22 @@ function Home() {
                     </ul>
                 </div>
             )}
-{currentView === 'reading' && <ReadingPractice />}
 
+            {/* 3. 阅读计时 */}
+            {currentView === 'reading' && <ReadingPractice />}
+
+            {/* 4. 口语模拟 */}
             {currentView === 'speaking' && <SpeakingPractice />}
             
+            {/* 5. 写作练习 */}
             {currentView === 'writing' && <WritingPractice />}
             
+            {/* 6. 课程资料 */}
             {currentView === 'materials' && <CourseMaterials />} 
 
         </div>
     )
 }
-
 
 // -------------------------------------------------------------------
 // 主应用逻辑 (App)
